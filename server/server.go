@@ -119,6 +119,10 @@ func NewServer(ctx context.Context, config *Config) (*Server, error) {
 		connector.UseReceiveProxyProto(trustedIpNets)
 	}
 
+	if config.TailscaleSocket != "" {
+		connector.UseTailscaleSocket(config.TailscaleSocket)
+	}
+
 	if config.ApiBinding != "" {
 		StartApiServer(config.ApiBinding)
 	}

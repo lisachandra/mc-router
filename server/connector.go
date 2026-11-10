@@ -19,6 +19,8 @@ import (
 	"github.com/juju/ratelimit"
 	"github.com/pires/go-proxyproto"
 	"github.com/sirupsen/logrus"
+
+	"tailscale.com/client/local"
 )
 
 const (
@@ -101,6 +103,14 @@ type Connector struct {
 	autoScaleUpAllowDenyConfig *AllowDenyConfig
 	connectionNotifier         ConnectionNotifier
 	asleepMOTD                 string
+	tsClient                   *local.Client
+}
+
+func (c *Connector) UseTailscaleSocket(socketPath string) {
+	c.tsClient = &local.Client{
+		Socket:        socketPath,
+		UseSocketOnly: true,
+	}
 }
 
 func (c *Connector) UseConnectionNotifier(notifier ConnectionNotifier) {
@@ -321,6 +331,46 @@ func (c *Connector) HandleConnection(frontendConn net.Conn) {
 						Error("Failed to read user info")
 					c.metrics.Errors.With("type", "read").Add(1)
 					return
+				}
+			}
+			if c.tsClient != nil {
+				// Get Tailscale identity for authentication
+				whois, err := c.tsClient.WhoIs(context.Background(), frontendConn.RemoteAddr().String())
+				if err != nil {
+					logrus.WithError(err).Warn("Failed to get Tailscale identity")
+					frontendConn.Close()
+					return
+				}
+
+				// Map Tailscale login names to Minecraft usernames
+				tailscaleToMinecraft := map[string]string{
+					"fkmuchlish":           "FunniestGuy2",
+					"abrisam.diarza":       "ventriculostomy",
+					"srape65":              "sentousa",
+					"gissyamnajwan":        "tsgggsaad",
+					"zayyanalmero":         "AlmeroZayn",
+					"simplixified":         "S1mpl1fied",
+					"itsnotater11":         "treelogic",
+					"hayyenboi":            "hayyeneleng",
+					"seaannann":            "SenSparrow",
+					"nurrasyidkarsodimejo": "lisachandra",
+				}
+
+				// Use mapped Minecraft username if available, otherwise use Tailscale login name
+				if mcName, ok := tailscaleToMinecraft[whois.UserProfile.LoginName]; ok {
+					playerInfo.Name = mcName
+					logrus.WithFields(logrus.Fields{
+						"client":        frontendConn.RemoteAddr(),
+						"tailscaleUser": whois.UserProfile.LoginName,
+						"minecraftName": mcName,
+					}).Info("Authenticated via Tailscale with mapped username")
+				} else {
+					// Fallback: use Tailscale login name as Minecraft username
+					playerInfo.Name = whois.UserProfile.LoginName
+					logrus.WithFields(logrus.Fields{
+						"client":        frontendConn.RemoteAddr(),
+						"tailscaleUser": whois.UserProfile.LoginName,
+					}).Info("Authenticated via Tailscale (no username mapping)")
 				}
 			}
 			logrus.

@@ -58,4 +58,6 @@ type Config struct {
 	SimplifySRV bool `default:"false" usage:"Simplify fully qualified SRV records for mapping"`
 
 	Webhook WebhookConfig `usage:"Webhook configuration"`
+
+	TailscaleSocket string
 }
